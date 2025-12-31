@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rust Service Manager</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+     <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@1.*/css/pico.min.css">
+    <style>
+        :root { --font-size: 16px; }
+        .status-badge { padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; text-transform: uppercase; display: inline-block; min-width: 75px; text-align: center; }
+        .running { background-color: #2e7d32; color: white; border: 1px solid #1b5e20; }
+        .stopped { background-color: #c62828; color: white; border: 1px solid #b71c1c; }
+        table { margin-bottom: 0; font-size: 0.95rem; }
+        th, td { padding: 10px 12px; vertical-align: middle; }
+        .font-mono { font-family: monospace; font-size: 0.9em; color: var(--primary); }
+        .btn-sm { padding: 5px 12px; font-size: 0.85rem; width: auto; margin-bottom: 0; }
+        .action-group { display: flex; gap: 8px; justify-content: flex-end; }
+        nav { border-bottom: 1px solid var(--muted-border-color); padding-bottom: 10px; margin-bottom: 20px; }
+        nav ul li { padding: 0; }
+        .nav-actions { display: flex; align-items: center; gap: 15px; }
+        .theme-toggle { background: none; border: none; padding: 0; color: var(--contrast); font-size: 1.2rem; cursor: pointer; margin-right: 5px; width: auto; }
+        .theme-toggle:focus { box-shadow: none; background: none; }
+        dialog article { min-width: 720px; max-width: 95%; padding: 30px 40px; margin-top: 5vh; }
+        dialog header { margin-bottom: 25px; margin-top: 5px; border-bottom: 1px solid var(--muted-border-color); padding-bottom: 15px; }
+        dialog header .close { top: 30px; right: 40px; }
+        .compact-form label { font-size: 0.9rem; margin-bottom: 6px; font-weight: 600; color: var(--h1-color); opacity: 0.8; }
+        .compact-form input[type="text"], .compact-form select, .compact-form input[type="url"], .compact-form input[type="number"] { font-size: 1rem; height: 2.5rem; padding: 4px 10px; margin-bottom: 15px; }
+        .compact-form small { font-size: 0.8rem; opacity: 0.7; }
+        .compact-form .grid { gap: 20px; }
+        .env-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+        .env-row input { margin-bottom: 0 !important; height: 2.2rem !important; font-size: 0.9rem; }
+        .env-key { flex: 1; }
+        .env-val { flex: 1.5; }
+        .btn-del-env { padding: 0 12px; height: 2.2rem; line-height: 2.2rem; background-color: #c62828; border-color: #c62828; color: white; font-size: 1.1rem; width: auto; margin-bottom: 0; }
+        .env-container-box { margin-top: 5px; margin-bottom: 5px; border: 1px solid var(--muted-border-color); padding: 15px; border-radius: 6px; background: var(--card-background-color); }
+        .btn-add-env { padding: 4px 15px; font-size: 0.8rem; margin-top: 5px; width: auto; }
+        .modal-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 25px; padding-top: 20px; border-top: 1px solid var(--muted-border-color); }
+        .autorun-wrapper { display: flex; align-items: center; font-size: 0.95rem; cursor: pointer; margin-bottom: 0; user-select: none; color: var(--color); }
+        .autorun-wrapper input { margin-right: 10px; margin-bottom: 0; }
+        .footer-btns { display: flex; gap: 12px; }
+        .footer-btns button, .footer-btns a { padding: 8px 25px; font-size: 0.95rem; width: auto; margin-bottom: 0; }
+        #yaml-editor textarea { font-family: monospace; font-size: 0.9rem; min-height: 300px; white-space: pre; background-color: var(--code-background-color); }
+        .id-link { text-decoration: none; border-bottom: 1px dotted var(--primary); color: var(--contrast); transition: all 0.2s; }
+        .id-link:hover { border-bottom-style: solid; color: var(--primary); }
+        
+        .drag-handle { cursor: grab; user-select: none; font-size: 1.2rem; opacity: 0.5; }
+        .drag-handle:hover { opacity: 1; }
+        tr.dragging { opacity: 0.5; background: var(--card-background-color); }
+        tr.drag-over { border-top: 2px solid var(--primary); }
+
+        /* --- Toast Notifications --- */
+        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast { min-width: 280px; padding: 12px 20px; border-radius: 6px; background: var(--card-background-color); color: var(--contrast); box-shadow: 0 5px 15px rgba(0,0,0,0.2); border-left: 5px solid var(--primary); border: 1px solid var(--muted-border-color); border-left-width: 5px; font-size: 0.9rem; animation: toastSlideIn 0.3s cubic-bezier(0.21, 1.02, 0.73, 1); pointer-events: auto; cursor: pointer; opacity: 0.95; }
+        .toast.success { border-left-color: #2e7d32; }
+        .toast.error { border-left-color: #c62828; }
+        @keyframes toastSlideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 0.95; } }
+        @keyframes toastFadeOut { from { opacity: 0.95; transform: translateY(0); } to { opacity: 0; transform: translateY(-20px); } }
+    </style>
+</head>
+<body>
+    <main class="container">
+        <nav>
+            <ul>
+                <li><strong>🚀 Service Manager</strong></li>
+            </ul>
+            <ul class="nav-actions">
+                <li><small id="connection-status" style="color: green">Connected</small></li>
+                <li><button class="theme-toggle" onclick="toggleTheme()" id="theme-icon">☀️</button></li>
+                <li><button onclick="openConfig()" class="btn-sm outline" title="全局设置">⚙️</button></li>
+                <li><button onclick="openYamlImporter()" class="btn-sm contrast outline">📥 导入</button></li>
+                <li><button onclick="openEditor()" class="btn-sm primary">+ 新增</button></li>
+                <li><button onclick="shutdownServer()" class="btn-sm" style="background-color:#c62828;border-color:#c62828;color:white;">🛑 退出</button></li>
+            </ul>
+        </nav>
+
+        <section>
+            <table role="grid">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;"></th>
+                        <th scope="col">ID / 服务名称</th>
+                        <th scope="col">命令 (Exec)</th>
+                        <th scope="col">PID</th>
+                        <th scope="col">状态</th>
+                        <th scope="col" style="text-align: right;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="service-list">
+                    <tr><td colspan="6" aria-busy="true">正在加载...</td></tr>
+                </tbody>
+            </table>
+        </section>
+    </main>
+
+    <!-- 编辑服务弹窗 -->
+    <dialog id="editor">
+        <article>
+            <header>
+                <a href="#close" aria-label="Close" class="close" onclick="closeEditor()"></a>
+                <strong id="modal-title" style="font-size: 1.2rem;">编辑服务</strong>
+            </header>
+            <form id="service-form" class="compact-form" onsubmit="event.preventDefault(); submitService();">
+                <div class="grid">
+                    <label>ID <small>(唯一标识)</small><input type="text" id="inp-id" name="id" required pattern="[a-zA-Z0-9_-]+" placeholder="service-id"></label>
+                    <label>显示名称<input type="text" id="inp-name" name="name" required placeholder="My Service"></label>
+                </div>
+                <div class="grid">
+                    <label>可执行文件<input type="text" id="inp-exec" name="exec" required placeholder="e.g.: aria2c.exe"></label>
+                    <label>Windows Flags
+                        <select id="inp-flags" name="flags">
+                            <option value="134217728">0x08000000 (隐藏窗口)</option>
+                            <option value="16">0x00000010 (显示窗口)</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="grid">
+                    <label>工作目录<input type="text" id="inp-dir" name="working_dir" placeholder="D:\Downloads (留空则默认)"></label>
+                    <label>服务链接 (URL)<input type="url" id="inp-url" name="url" placeholder="http://localhost:3000"></label>
+                </div>
+                <label>参数 (Args)<input type="text" id="inp-args" name="args" placeholder="--enable-rpc --port=6800"></label>
+                <label style="margin-bottom:5px">环境变量 (Env)</label>
+                <div class="env-container-box">
+                    <div id="env-container"></div>
+                    <button type="button" class="outline btn-add-env" onclick="addEnvRow()">+ 添加变量</button>
+                </div>
+                <footer class="modal-footer">
+                    <label class="autorun-wrapper" for="inp-autorun"><input type="checkbox" id="inp-autorun" name="autorun" role="switch">跟随启动</label>
+                    <div class="footer-btns">
+                        <a href="#" role="button" class="secondary outline" onclick="closeEditor()">取消</a>
+                        <button type="submit">保存</button>
+                    </div>
+                </footer>
+            </form>
+        </article>
+    </dialog>
+
+    <dialog id="config-modal">
+        <article style="min-width: 500px;">
+            <header>
+                <a href="#close" aria-label="Close" class="close" onclick="closeConfig()"></a>
+                <strong style="font-size: 1.2rem;">全局设置</strong>
+            </header>
+            <form class="compact-form" onsubmit="event.preventDefault(); submitConfig();">
+                <label>
+                    保活检查间隔 (Keep Alive) - 秒
+                    <input type="number" id="inp-keepalive" min="0" placeholder="0 = 关闭">
+                    <small>如果服务意外停止，将在此时间间隔后自动重启。需重启程序生效。</small>
+                </label>
+                <footer class="modal-footer" style="margin-top:20px;">
+                    <div></div>
+                    <div class="footer-btns">
+                        <a href="#" role="button" class="secondary outline" onclick="closeConfig()">取消</a>
+                        <button type="submit">保存设置</button>
+                    </div>
+                </footer>
+            </form>
+        </article>
+    </dialog>
+
+    <dialog id="yaml-importer">
+        <article>
+            <header><a href="#close" aria-label="Close" class="close" onclick="closeYamlImporter()"></a><strong style="font-size: 1.2rem;">导入 YAML 配置</strong></header>
+            <form onsubmit="event.preventDefault(); submitYaml();">
+                <textarea id="inp-yaml" rows="10" placeholder="- id: syncthing&#10;  name: Syncthing&#10;  url: http://127.0.0.1:8384&#10;  ..."></textarea>
+                <footer class="modal-footer" style="margin-top: 10px;"><div></div><div class="footer-btns"><button type="submit">确认导入</button></div></footer>
+            </form>
+        </article>
+    </dialog>
+
+    <!-- Toast 容器 -->
+    <div id="toast-container"></div>
+
+    <script>
+        const API_BASE = '/api/services';
+        const listContainer = document.getElementById('service-list');
+        const editor = document.getElementById('editor');
+        const configModal = document.getElementById('config-modal');
+        const yamlImporter = document.getElementById('yaml-importer');
+        const form = document.getElementById('service-form');
+        const envContainer = document.getElementById('env-container');
+        
+        let currentMode = 'add';
+        let cachedServices = {};
+        let isDragActive = false;
+
+        const html = document.documentElement;
+        const themeIcon = document.getElementById('theme-icon');
+        function initTheme() { const t = localStorage.getItem('theme') || 'dark'; html.setAttribute('data-theme', t); themeIcon.innerText = t === 'dark' ? '🌙' : '☀️'; }
+        function toggleTheme() { const n = html.getAttribute('data-theme')==='dark'?'light':'dark'; html.setAttribute('data-theme',n); localStorage.setItem('theme',n); themeIcon.innerText = n==='dark'?'🌙':'☀️'; }
+        initTheme();
+
+        // --- Toast Logic ---
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerText = message;
+            toast.onclick = () => removeToast(toast);
+            container.appendChild(toast);
+            setTimeout(() => removeToast(toast), 3000);
+        }
+        function removeToast(el) {
+            el.style.animation = 'toastFadeOut 0.3s forwards';
+            el.addEventListener('animationend', () => el.remove());
+        }
+
+        async function fetchServices() {
+            if (window.isShuttingDown || isDragActive) return;
+            try {
+                const res = await fetch(API_BASE);
+                const json = await res.json();
+                if (json.success) {
+                    document.getElementById('connection-status').innerText = "Connected";
+                    renderTable(json.data);
+                }
+            } catch (e) { if(!window.isShuttingDown) document.getElementById('connection-status').innerText = "Disconnected"; }
+        }
+
+        function renderTable(services) {
+            cachedServices = {};
+            services.forEach(s => cachedServices[s.id] = s);
+            if (services.length === 0) { listContainer.innerHTML = '<tr><td colspan="6" style="text-align:center">暂无服务</td></tr>'; return; }
+
+            listContainer.innerHTML = services.map(s => {
+                const isRunning = s.status === 'Running';
+                const autoBadge = s.autorun ? `<span data-tooltip="自启动" style="background:#01579b;color:white;font-size:0.7em;padding:2px 5px;border-radius:4px;margin-left:5px;vertical-align:middle;cursor:help">AUTO</span>` : '';
+                let idHtml = `<small style="opacity:0.6">${s.id}</small>`;
+                if (s.url) idHtml = `<a href="${s.url}" target="_blank" class="id-link"><small>${s.id} ↗</small></a>`;
+
+                let btns = isRunning 
+                    ? `<button onclick="control('${s.id}','restart')" class="btn-sm contrast outline">重启</button><button onclick="control('${s.id}','stop')" class="btn-sm secondary outline">停止</button>`
+                    : `<button onclick="control('${s.id}','start')" class="btn-sm primary outline">启动</button><button onclick="deleteService('${s.id}')" class="btn-sm secondary outline" style="border-color:#b71c1c;color:#b71c1c">删除</button>`;
+                btns = `<button onclick="openEditor('${s.id}')" class="btn-sm outline">编辑</button>` + btns;
+
+                return `
+                    <tr draggable="true" data-id="${s.id}" ondragstart="handleDragStart(event)" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragend="handleDragEnd(event)">
+                        <td class="drag-handle" style="text-align:center;">☰</td>
+                        <td><strong>${s.name}</strong>${autoBadge}<br>${idHtml}</td>
+                        <td class="font-mono">${s.exec}</td>
+                        <td class="font-mono">${s.pid || '-'}</td>
+                        <td><span class="status-badge ${isRunning?'running':'stopped'}">${s.status}</span></td>
+                        <td><div class="action-group">${btns}</div></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        let dragSrcEl = null;
+
+        function handleDragStart(e) {
+            isDragActive = true;
+            dragSrcEl = e.currentTarget; 
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', e.currentTarget.innerHTML);
+            e.currentTarget.classList.add('dragging');
+        }
+
+        function handleDragOver(e) {
+            if (e.preventDefault) e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const targetRow = e.target.closest('tr');
+            if (targetRow && targetRow !== dragSrcEl) {
+                targetRow.classList.add('drag-over');
+            }
+            return false;
+        }
+
+        function handleDragEnd(e) {
+            isDragActive = false;
+            listContainer.querySelectorAll('tr').forEach(tr => {
+                tr.classList.remove('dragging');
+                tr.classList.remove('drag-over');
+            });
+        }
+
+        async function handleDrop(e) {
+            if (e.stopPropagation) e.stopPropagation();
+            const targetRow = e.target.closest('tr');
+            if (dragSrcEl !== targetRow && targetRow) {
+                const rows = Array.from(listContainer.querySelectorAll('tr'));
+                const srcIndex = rows.indexOf(dragSrcEl);
+                const targetIndex = rows.indexOf(targetRow);
+                if (srcIndex < targetIndex) { targetRow.after(dragSrcEl); } else { targetRow.before(dragSrcEl); }
+                const newOrder = Array.from(listContainer.querySelectorAll('tr')).map(tr => tr.getAttribute('data-id'));
+                try {
+                    const res = await fetch('/api/services/reorder', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ids: newOrder }) });
+                    if(res.ok) showToast('排序已更新');
+                } catch(e) { showToast('排序更新失败', 'error'); }
+            }
+            return false;
+        }
+
+        async function openConfig() {
+            try {
+                const res = await fetch('/api/config');
+                const json = await res.json();
+                if(json.success) {
+                    document.getElementById('inp-keepalive').value = json.data.keep_alive;
+                    configModal.setAttribute('open', true);
+                }
+            } catch(e) { showToast("无法获取配置", 'error'); }
+        }
+        function closeConfig() { configModal.removeAttribute('open'); }
+        
+        async function submitConfig() {
+            const val = parseInt(document.getElementById('inp-keepalive').value || 0, 10);
+            try {
+                await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ keep_alive: val }) });
+                showToast('全局设置已保存');
+                closeConfig();
+            } catch(e) { showToast('设置保存失败', 'error'); }
+        }
+
+        function openEditor(id = null) {
+            form.reset(); envContainer.innerHTML = '';
+            if (id && cachedServices[id]) {
+                currentMode = 'edit';
+                const s = cachedServices[id];
+                document.getElementById('modal-title').innerText = "编辑服务";
+                document.getElementById('inp-id').value = s.id; document.getElementById('inp-id').disabled = true;
+                document.getElementById('inp-name').value = s.name;
+                document.getElementById('inp-exec').value = s.exec;
+                document.getElementById('inp-dir').value = s.working_dir||'';
+                document.getElementById('inp-url').value = s.url||'';
+                document.getElementById('inp-autorun').checked = s.autorun;
+                document.getElementById('inp-args').value = (s.args||[]).join(' ');
+                document.getElementById('inp-flags').value = (s.windows&&s.windows.creation_flags)||'134217728';
+                if(s.env) Object.entries(s.env).forEach(([k,v])=>addEnvRow(k,v));
+            } else {
+                currentMode = 'add';
+                document.getElementById('modal-title').innerText = "新增服务";
+                document.getElementById('inp-id').disabled = false;
+                document.getElementById('inp-flags').value = '134217728';
+            }
+            editor.setAttribute('open', true);
+        }
+
+        function closeEditor() { editor.removeAttribute('open'); }
+        
+        async function control(id, action) { 
+            try {
+                await fetch(`${API_BASE}/${id}/${action}`,{method:'POST'}); 
+                const actMap = { start: '启动', stop: '停止', restart: '重启' };
+                showToast(`已发送${actMap[action] || action}指令: ${id}`);
+                fetchServices(); 
+            } catch(e) { showToast(`操作失败: ${id}`, 'error'); }
+        }
+        
+        async function deleteService(id) { 
+            if(confirm(`确认删除 ${id}?`)) { 
+                try {
+                    await fetch(`${API_BASE}/${id}`,{method:'DELETE'}); 
+                    showToast(`服务 ${id} 已删除`);
+                    fetchServices(); 
+                } catch(e) { showToast('删除失败', 'error'); }
+            } 
+        }
+
+        async function submitService() {
+            const env={}; envContainer.querySelectorAll('.env-row').forEach(r=>{const k=r.querySelector('.env-key').value.trim();if(k)env[k]=r.querySelector('.env-val').value.trim();});
+            const data={
+                id: document.getElementById('inp-id').value,
+                name: document.getElementById('inp-name').value,
+                exec: document.getElementById('inp-exec').value,
+                working_dir: document.getElementById('inp-dir').value||null,
+                url: document.getElementById('inp-url').value||null,
+                autorun: document.getElementById('inp-autorun').checked,
+                args: document.getElementById('inp-args').value.trim().split(/\s+/).filter(s=>s),
+                env: Object.keys(env).length?env:null,
+                windows: { creation_flags: parseInt(document.getElementById('inp-flags').value) }
+            };
+            const method = currentMode==='edit'?'PUT':'POST';
+            const url = currentMode==='edit'?`${API_BASE}/${data.id}`:API_BASE;
+            
+            try {
+                const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
+                const json = await res.json();
+                if(json.success) { 
+                    showToast(currentMode === 'edit' ? '服务已更新' : '服务已创建');
+                    closeEditor(); 
+                    fetchServices(); 
+                } else {
+                    showToast("保存失败: " + (json.message || "未知错误"), 'error');
+                }
+            } catch(e) { showToast("请求异常", 'error'); }
+        }
+
+        function addEnvRow(k='',v=''){const d=document.createElement('div');d.className='env-row';d.innerHTML=`<input type="text" class="env-key" value="${k}"><input type="text" class="env-val" value="${v}"><button type="button" class="btn-del-env" onclick="this.parentElement.remove()">✕</button>`;envContainer.appendChild(d);}
+        
+        async function shutdownServer() {
+            if(!confirm("确定要退出程序吗？")) return;
+            window.isShuttingDown=true; document.getElementById('connection-status').innerText="Shutting down...";
+            try{await fetch('/api/shutdown',{method:'POST'});}catch(e){}
+            document.body.innerHTML="<main class='container' style='text-align:center;padding-top:20vh;'><h1>🛑 程序已终止</h1></main>";
+        }
+        function openYamlImporter(){document.getElementById('inp-yaml').value='';yamlImporter.setAttribute('open',true);}
+        function closeYamlImporter(){yamlImporter.removeAttribute('open');}
+        
+        async function submitYaml(){
+            const y=document.getElementById('inp-yaml').value; if(!y.trim())return;
+            try {
+                const res=await fetch(`${API_BASE}/import`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({yaml:y})});
+                const json = await res.json();
+                if(json.success){
+                    showToast('YAML 导入成功');
+                    closeYamlImporter();
+                    fetchServices();
+                } else {
+                    showToast("导入失败: " + (json.message || "格式错误"), 'error');
+                }
+            } catch(e) { showToast("请求异常", 'error'); }
+        }
+
+        setInterval(fetchServices, 10000);
+        fetchServices();
+    </script>
+</body>
+</html>

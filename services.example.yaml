@@ -1,0 +1,36 @@
+listen: 127.0.0.1:3000
+keep_alive: 600
+services:
+- id: aria2
+  name: aria2
+  exec: aria2c.exe
+  working_dir: D:/app/scoop/apps/aria2/current/
+  args:
+  - --log={log}
+  - --input-file={session}
+  - --save-session={session}
+  - --dir={download}
+  - --conf-path={conf}
+  env:
+    conf: D:/app/scoop/apps/aria2/current/appdata/aria2_rust.conf
+    download: D:/app/scoop/apps/aria2/current/download/
+    log: D:/app/scoop/apps/aria2/current/appdata/aria2.log
+    session: D:/app/scoop/apps/aria2/current/appdata/aria2.session
+  windows:
+    creation_flags: 134217728
+  autorun: true
+  url: http://localhost:3000/ariang
+- id: syncthing
+  name: syncthing
+  exec: syncthing.exe
+  working_dir: D:/app/scoop/apps/syncthing/current/
+  args:
+  - --no-console
+  - --no-browser
+  - --home={home}
+  env:
+    home: D:/app/scoop/apps/syncthing/current/config/
+  windows:
+    creation_flags: 134217728
+  autorun: true
+  url: http://localhost:8384
