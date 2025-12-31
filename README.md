@@ -54,7 +54,7 @@ The binary will be located at target/release/service-manager.
 1. Create a services.yaml file (see configuration below).
 2. Run the application:
 ```bash
-./service-manager.exe
+./appmanager.exe
 ```
 3. Open your browser and visit: http://localhost:3000 (or your configured port).
 
