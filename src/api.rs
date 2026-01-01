@@ -109,6 +109,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/services/{id}/start", post(start_service))
         .route("/api/services/{id}/stop", post(stop_service))
         .route("/api/services/{id}/restart", post(restart_service))
+        .route("/api/services/{id}/status", get(get_service_status)) 
         .with_state(state)
 }
 
@@ -170,6 +171,40 @@ async fn restart_service(
         Err(e) => resp_err(e).into_response(),
     }
 }
+/// Handle: get single service status
+async fn get_service_status(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let mut mgr = state.manager.lock().await;
+
+    // 1. check if service existing
+    if !mgr.services.contains_key(&id) {
+        return resp_err("msg").into_response();
+    }
+    let is_running = mgr.is_running(&id);
+    if let Some(svc) = mgr.services.get(&id) {
+        let dto = ServiceDto {
+            id: svc.config.id.clone(),
+            name: svc.config.name.clone(),
+            exec: svc.config.exec.clone(),
+            args: svc.config.args.clone(),
+            env: svc.config.env.clone(),
+            working_dir: svc.config.working_dir.clone(),
+            windows: svc.config.windows.clone(),
+            autorun: svc.config.autorun.unwrap_or(false),
+            url: svc.config.url.clone(),
+            status: if is_running { "Running".into() } else { "Stopped".into() },
+            pid: svc.last_known_pid,
+        };
+
+        resp_ok(dto).into_response()
+    } else {
+        resp_err("Service missing").into_response()
+    }
+}
+
+
 /// Handle: list all services
 async fn list_services(
     State(state): State<AppState>

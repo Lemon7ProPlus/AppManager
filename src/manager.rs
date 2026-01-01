@@ -23,7 +23,7 @@ pub struct ServiceStatusSnapshot {
 pub struct ManagedService {
     pub config: ServiceConfig,
     pub process: Option<Child>,
-    pub last_known_pid: Option<u32>,    // to catch pid who not started by app manager
+    pub last_known_pid: Option<u32>,    // to catch pid who not started by app manager  
 }
 impl ManagedService {
     fn new(config: ServiceConfig) -> Self {
